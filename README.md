@@ -1,6 +1,7 @@
 # Still200 Python SDK
 
-Monitor Python scheduled jobs with Still200 using a decorator.
+Monitor Python scheduled jobs with [Still200](https://still200.com) using a
+decorator, without writing repetitive monitoring boilerplate.
 
 ```python
 from still200_sdk import monitor
