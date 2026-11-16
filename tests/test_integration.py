@@ -34,7 +34,7 @@ def api_server() -> Generator[tuple[str, list[RecordedRequest]]]:
             requests.append(
                 RecordedRequest(
                     path=self.path,
-                    ping_token=self.headers.get("STILL200_PING_TOKEN"),
+                    ping_token=self.headers.get("Still200-Ping-Token"),
                     body=body,
                 )
             )

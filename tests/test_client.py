@@ -3,7 +3,7 @@ import asyncio
 import httpx2
 import pytest
 
-from still200_sdk._client import PING_TOKEN_HEADER, AsyncClient, Client
+from still200_sdk._client import AsyncClient, Client
 from still200_sdk._config import Config
 
 
@@ -28,7 +28,7 @@ def test_sync_client_sends_all_ping_types() -> None:
         "/jobs/ping/fail",
     ]
     assert all(
-        request.headers[PING_TOKEN_HEADER] == "job-secret" for request in requests
+        request.headers["Still200-Ping-Token"] == "job-secret" for request in requests
     )
     assert requests[2].read() == b'{"error_message":"broken","payload":{"attempt":2}}'
 
@@ -71,7 +71,7 @@ def test_async_client_sends_all_ping_types() -> None:
         "/jobs/ping/fail",
     ]
     assert all(
-        request.headers[PING_TOKEN_HEADER] == "job-secret" for request in requests
+        request.headers["Still200-Ping-Token"] == "job-secret" for request in requests
     )
     assert requests[2].read() == b'{"error_message":"broken","payload":{"attempt":2}}'
 

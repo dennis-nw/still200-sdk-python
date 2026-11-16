@@ -7,7 +7,7 @@ import httpx2
 
 from still200_sdk._config import Config
 
-PING_TOKEN_HEADER = "STILL200_PING_TOKEN"
+PING_TOKEN_HEADER = "Still200-Ping-Token"
 PING_PATH = "/jobs/ping"
 
 
