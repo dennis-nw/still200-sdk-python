@@ -1,13 +1,16 @@
 """HTTP client for the Still200 API."""
 
+import uuid
 from types import TracebackType
 from typing import Any, Self
 
 import httpx2
 
 from still200_sdk._config import Config
+from still200_sdk._run import CurrentRun
 
 PING_TOKEN_HEADER = "Still200-Ping-Token"
+RUN_ID_HEADER = "Still200-Run-Id"
 PING_PATH = "/jobs/ping"
 
 
@@ -27,23 +30,24 @@ class Client:
             transport=transport,
         )
 
-    def start(self) -> None:
+    def start(self) -> CurrentRun:
         """Report that the scheduled job has started."""
-        self._ping("start")
+        return _run_from_response(self._ping("start"))
 
-    def finish(self) -> None:
+    def finish(self, run_id: uuid.UUID) -> None:
         """Report that the scheduled job completed successfully."""
-        self._ping("finish")
+        self._ping("finish", headers=_run_headers(run_id))
 
     def fail(
         self,
+        run_id: uuid.UUID,
         *,
         error_message: str | None = None,
         payload: dict[str, Any] | None = None,
     ) -> None:
         """Report that the scheduled job failed."""
         data = _failure_data(error_message=error_message, payload=payload)
-        self._ping("fail", json=data)
+        self._ping("fail", headers=_run_headers(run_id), json=data)
 
     def close(self) -> None:
         """Close the underlying HTTP client."""
@@ -60,9 +64,18 @@ class Client:
     ) -> None:
         self.close()
 
-    def _ping(self, ping_type: str, *, json: dict[str, Any] | None = None) -> None:
-        response = self._client.post(f"{PING_PATH}/{ping_type}", json=json)
+    def _ping(
+        self,
+        ping_type: str,
+        *,
+        headers: dict[str, str] | None = None,
+        json: dict[str, Any] | None = None,
+    ) -> httpx2.Response:
+        response = self._client.post(
+            f"{PING_PATH}/{ping_type}", headers=headers, json=json
+        )
         response.raise_for_status()
+        return response
 
 
 class AsyncClient:
@@ -81,23 +94,24 @@ class AsyncClient:
             transport=transport,
         )
 
-    async def start(self) -> None:
+    async def start(self) -> CurrentRun:
         """Report that the scheduled job has started."""
-        await self._ping("start")
+        return _run_from_response(await self._ping("start"))
 
-    async def finish(self) -> None:
+    async def finish(self, run_id: uuid.UUID) -> None:
         """Report that the scheduled job completed successfully."""
-        await self._ping("finish")
+        await self._ping("finish", headers=_run_headers(run_id))
 
     async def fail(
         self,
+        run_id: uuid.UUID,
         *,
         error_message: str | None = None,
         payload: dict[str, Any] | None = None,
     ) -> None:
         """Report that the scheduled job failed."""
         data = _failure_data(error_message=error_message, payload=payload)
-        await self._ping("fail", json=data)
+        await self._ping("fail", headers=_run_headers(run_id), json=data)
 
     async def close(self) -> None:
         """Close the underlying HTTP client."""
@@ -118,10 +132,30 @@ class AsyncClient:
         self,
         ping_type: str,
         *,
+        headers: dict[str, str] | None = None,
         json: dict[str, Any] | None = None,
-    ) -> None:
-        response = await self._client.post(f"{PING_PATH}/{ping_type}", json=json)
+    ) -> httpx2.Response:
+        response = await self._client.post(
+            f"{PING_PATH}/{ping_type}", headers=headers, json=json
+        )
         response.raise_for_status()
+        return response
+
+
+def _run_from_response(response: httpx2.Response) -> CurrentRun:
+    data = response.json()
+    run_id = data.get("id") if isinstance(data, dict) else None
+
+    try:
+        return CurrentRun(id=uuid.UUID(str(run_id)))
+    except ValueError as exc:
+        raise ValueError(
+            "Still200 start response did not contain a valid run ID."
+        ) from exc
+
+
+def _run_headers(run_id: uuid.UUID) -> dict[str, str]:
+    return {RUN_ID_HEADER: str(run_id)}
 
 
 def _failure_data(

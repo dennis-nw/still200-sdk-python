@@ -86,6 +86,26 @@ if __name__ == "__main__":
 The decorator preserves the function's arguments, return value, and original
 exception behavior.
 
+## Accessing the current run
+
+Still200 assigns a unique ID to each invocation. The SDK manages that ID
+automatically and includes it in finish or failure pings. If your job needs the
+ID for logs, traces, or its own records, access the current run inside the
+decorated function:
+
+```python
+from still200_sdk import get_current_run, monitor
+
+
+@monitor()
+async def generate_report() -> None:
+    run = get_current_run()
+    print(f"Still200 run: {run.id}")
+```
+
+For the ID alone, use `get_current_run_id()`. Calling either accessor outside
+an active monitored invocation raises `NoActiveRunError`.
+
 ## Multiple scheduled jobs
 
 For separate scripts or processes, give each process its own value for
@@ -121,9 +141,10 @@ An explicit `ping_token` takes precedence over `STILL200_PING_TOKEN`.
 
 For each invocation, the SDK sends:
 
-1. A start ping before running the function.
-2. A finish ping if the function returns successfully.
-3. A failure ping if the function raises an exception.
+1. A start ping before running the function and captures the run ID returned by
+   Still200.
+2. A finish ping for that run if the function returns successfully.
+3. A failure ping for that run if the function raises an exception.
 
 Failure pings include the exception message, limited to 2,000 characters. The
 SDK does not automatically send function arguments because they may contain
@@ -132,6 +153,8 @@ sensitive data.
 Still200 reporting errors are logged but do not change the job's behavior:
 
 - If a start ping fails, the job still runs.
+- If Still200 does not return a valid run ID, the job still runs but the SDK
+  cannot send a correlated finish or failure ping.
 - If a finish ping fails, the job's result is still returned.
 - If a failure ping fails, the job's original exception is still raised.
 

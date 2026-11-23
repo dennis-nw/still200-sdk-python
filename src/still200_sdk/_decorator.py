@@ -8,6 +8,7 @@ from typing import Any, TypeVar, cast
 
 from still200_sdk._client import AsyncClient, Client
 from still200_sdk._config import Config
+from still200_sdk._run import _reset_current_run, _set_current_run
 
 MAX_ERROR_MESSAGE_LENGTH = 2_000
 
@@ -29,24 +30,32 @@ def monitor(*, ping_token: str | None = None) -> Callable[[F], F]:
                 try:
                     client = AsyncClient(config)
                 except Exception:
-                    logger.warning("Failed to initialize Still200 monitoring", exc_info=True)
+                    logger.warning(
+                        "Failed to initialize Still200 monitoring", exc_info=True
+                    )
                     return await func(*args, **kwargs)
 
+                run_token = None
                 try:
-                    await _report_safely_async(client.start)
+                    run = await _report_safely_async(client.start)
+                    run_token = _set_current_run(run) if run is not None else None
 
                     try:
                         result = await func(*args, **kwargs)
                     except Exception as error:
                         error_message = _error_message(error)
-                        await _report_safely_async(
-                            lambda: client.fail(error_message=error_message)
-                        )
+                        if run is not None:
+                            await _report_safely_async(
+                                lambda: client.fail(run.id, error_message=error_message)
+                            )
                         raise
 
-                    await _report_safely_async(client.finish)
+                    if run is not None:
+                        await _report_safely_async(lambda: client.finish(run.id))
                     return result
                 finally:
+                    if run_token is not None:
+                        _reset_current_run(run_token)
                     await _report_safely_async(client.close)
 
             return cast(F, async_wrapper)
@@ -58,22 +67,32 @@ def monitor(*, ping_token: str | None = None) -> Callable[[F], F]:
             try:
                 client = Client(config)
             except Exception:
-                logger.warning("Failed to initialize Still200 monitoring", exc_info=True)
+                logger.warning(
+                    "Failed to initialize Still200 monitoring", exc_info=True
+                )
                 return func(*args, **kwargs)
 
+            run_token = None
             try:
-                _report_safely(client.start)
+                run = _report_safely(client.start)
+                run_token = _set_current_run(run) if run is not None else None
 
                 try:
                     result = func(*args, **kwargs)
                 except Exception as error:
                     error_message = _error_message(error)
-                    _report_safely(lambda: client.fail(error_message=error_message))
+                    if run is not None:
+                        _report_safely(
+                            lambda: client.fail(run.id, error_message=error_message)
+                        )
                     raise
 
-                _report_safely(client.finish)
+                if run is not None:
+                    _report_safely(lambda: client.finish(run.id))
                 return result
             finally:
+                if run_token is not None:
+                    _reset_current_run(run_token)
                 _report_safely(client.close)
 
         return cast(F, sync_wrapper)
@@ -93,15 +112,23 @@ def _error_message(error: Exception) -> str:
     return message[:MAX_ERROR_MESSAGE_LENGTH]
 
 
-def _report_safely(operation: Callable[[], None]) -> None:
+def _report_safely[T](operation: Callable[[], T]) -> T | None:
     try:
-        operation()
+        return operation()
     except Exception:
-        logger.warning("Failed to report scheduled job status to Still200", exc_info=True)
+        logger.warning(
+            "Failed to report scheduled job status to Still200", exc_info=True
+        )
+        return None
 
 
-async def _report_safely_async(operation: Callable[[], Awaitable[None]]) -> None:
+async def _report_safely_async[T](
+    operation: Callable[[], Awaitable[T]],
+) -> T | None:
     try:
-        await operation()
+        return await operation()
     except Exception:
-        logger.warning("Failed to report scheduled job status to Still200", exc_info=True)
+        logger.warning(
+            "Failed to report scheduled job status to Still200", exc_info=True
+        )
+        return None
