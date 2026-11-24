@@ -1,9 +1,8 @@
 """SDK configuration."""
 
-from __future__ import annotations
-
 import os
 from dataclasses import dataclass, field
+from typing import Self
 
 DEFAULT_BASE_URL = "https://api.still200.com"
 DEFAULT_TIMEOUT = 5.0
@@ -33,7 +32,7 @@ class Config:
         object.__setattr__(self, "base_url", base_url)
 
     @classmethod
-    def from_env(cls) -> Config:
+    def from_env(cls) -> Self:
         """Load configuration from the process environment."""
         ping_token = os.getenv(PING_TOKEN_ENV_VAR)
 
