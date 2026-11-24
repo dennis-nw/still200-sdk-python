@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
 from collections.abc import Generator
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,6 +20,7 @@ from still200_sdk._config import Config
 class RecordedRequest:
     path: str
     ping_token: str | None
+    run_id: str | None
     body: dict[str, Any] | None
 
 
@@ -35,9 +37,19 @@ def api_server() -> Generator[tuple[str, list[RecordedRequest]]]:
                 RecordedRequest(
                     path=self.path,
                     ping_token=self.headers.get("Still200-Ping-Token"),
+                    run_id=self.headers.get("Still200-Run-Id"),
                     body=body,
                 )
             )
+            if self.path == "/jobs/ping/start":
+                response_body = json.dumps({"id": str(RUN_ID)}).encode()
+                self.send_response(201)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(response_body)))
+                self.end_headers()
+                self.wfile.write(response_body)
+                return
+
             self.send_response(204)
             self.end_headers()
 
@@ -64,6 +76,9 @@ def use_api_server(monkeypatch: pytest.MonkeyPatch, base_url: str) -> None:
     monkeypatch.setattr(decorator_module, "_resolve_config", resolve_config)
 
 
+RUN_ID = uuid.uuid4()
+
+
 def test_sync_job_reports_start_and_finish(
     api_server: tuple[str, list[RecordedRequest]],
     monkeypatch: pytest.MonkeyPatch,
@@ -77,8 +92,8 @@ def test_sync_job_reports_start_and_finish(
 
     assert job() == "done"
     assert requests == [
-        RecordedRequest("/jobs/ping/start", "integration-token", None),
-        RecordedRequest("/jobs/ping/finish", "integration-token", None),
+        RecordedRequest("/jobs/ping/start", "integration-token", None, None),
+        RecordedRequest("/jobs/ping/finish", "integration-token", str(RUN_ID), None),
     ]
 
 
@@ -95,8 +110,8 @@ def test_async_job_reports_start_and_finish(
 
     assert asyncio.run(job()) == "done"
     assert requests == [
-        RecordedRequest("/jobs/ping/start", "async-token", None),
-        RecordedRequest("/jobs/ping/finish", "async-token", None),
+        RecordedRequest("/jobs/ping/start", "async-token", None, None),
+        RecordedRequest("/jobs/ping/finish", "async-token", str(RUN_ID), None),
     ]
 
 
@@ -117,10 +132,11 @@ def test_failed_job_reports_error_and_preserves_exception(
 
     assert caught.value is error
     assert requests == [
-        RecordedRequest("/jobs/ping/start", "integration-token", None),
+        RecordedRequest("/jobs/ping/start", "integration-token", None, None),
         RecordedRequest(
             "/jobs/ping/fail",
             "integration-token",
+            str(RUN_ID),
             {"error_message": "job broke"},
         ),
     ]
